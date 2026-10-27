@@ -1,11 +1,17 @@
+'use client';
+
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { CHAT_LIST_LIMIT } from '@/constants/chat';
+import { useGetChatListQuery } from '@/store/services/api';
+import { IChat } from '@/types/chat';
 
 interface ChatListItemProps {
-  chat: { id: number; title: string; created_at: string };
+  chat: IChat;
   isActive: boolean;
 }
 
-export function ChatListItem({ chat, isActive }: ChatListItemProps) {
+function ChatListItem({ chat, isActive }: ChatListItemProps) {
   const date = new Date(chat.created_at).toLocaleDateString('en-US', {
     month: 'short',
     day: '2-digit',
@@ -26,6 +32,11 @@ export function ChatListItem({ chat, isActive }: ChatListItemProps) {
 }
 
 export default function Sidebar() {
+  const pathname = usePathname();
+  const { data, isError } = useGetChatListQuery({
+    limit: CHAT_LIST_LIMIT,
+  });
+
   return (
     <aside className="bg-sidebar border-border flex w-65 min-w-65 flex-col border-r">
       <div className="border-border border-b p-4">
@@ -38,7 +49,19 @@ export default function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
-        <p className="text-ghost p-3 text-[13px]">No chats yet.</p>
+        {data?.results.map(chat => (
+          <ChatListItem
+            key={chat.id}
+            chat={chat}
+            isActive={pathname === `/chats/${chat.id}`}
+          />
+        ))}
+        {isError && !data && (
+          <p className="text-ghost p-3 text-[13px]">Could not load chats.</p>
+        )}
+        {data?.results.length === 0 && (
+          <p className="text-ghost p-3 text-[13px]">No chats yet.</p>
+        )}
       </div>
     </aside>
   );
