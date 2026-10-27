@@ -1,0 +1,1 @@
+- [Frontend tooling traps](frontend-tooling-traps.md) — prettier/eslint baselines, typegen, cacheComponents Suspense, Tailwind v4 preflight gotchas
