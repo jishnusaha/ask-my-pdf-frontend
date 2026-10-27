@@ -1,20 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { IChatMessage } from '@/types/chat';
 import MessageBubble from './MessageBubble';
 import ThinkingIndicator from './ThinkingIndicator';
 
-// Phase 2 replaces this with the real message type from src/types/chat.ts.
-export interface IMessageView {
-  id: number | string;
-  role: 'user' | 'assistant';
-  content: string;
-  content_html: string | null;
-  created_at: string;
-}
-
 interface MessageListProps {
-  messages: IMessageView[];
+  messages: IChatMessage[];
+  // True while the history is first loading, so the empty state doesn't flash.
+  isLoading?: boolean;
   pendingQuestion?: string | null;
   isThinking?: boolean;
   error?: string | null;
@@ -22,6 +16,7 @@ interface MessageListProps {
 
 export default function MessageList({
   messages,
+  isLoading,
   pendingQuestion,
   isThinking,
   error,
@@ -34,7 +29,11 @@ export default function MessageList({
   }, [messages, pendingQuestion, isThinking, error]);
 
   const isEmpty =
-    messages.length === 0 && !pendingQuestion && !isThinking && !error;
+    !isLoading &&
+    messages.length === 0 &&
+    !pendingQuestion &&
+    !isThinking &&
+    !error;
 
   return (
     <div

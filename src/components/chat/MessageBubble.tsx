@@ -1,5 +1,7 @@
+import { ChatMessageRoleType } from '@/types/chat';
+
 interface MessageBubbleProps {
-  role: 'user' | 'assistant';
+  role: ChatMessageRoleType;
   content: string;
   contentHtml: string | null;
   // Omitted for optimistic messages that have no server timestamp yet.
