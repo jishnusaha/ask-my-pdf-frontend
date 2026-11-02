@@ -82,22 +82,6 @@ export const api = createApi({
       ],
     }),
 
-    sendMessage: build.mutation<
-      IChatMessage[],
-      {
-        chatId: number;
-        question: string;
-      }
-    >({
-      query: ({ chatId, question }) => ({
-        url: `/chats/api/${chatId}/messages/`,
-        method: 'POST',
-        body: { question },
-      }),
-      invalidatesTags: (_, error, { chatId }) =>
-        error ? [] : [{ type: 'chat-messages', id: chatId }],
-    }),
-
     getChatChunks: build.query<
       IPaginatedResponse<IDocumentChunk>,
       {
@@ -122,7 +106,6 @@ export const {
   useGetChatListQuery,
   useCreateChatMutation,
   useGetChatMessagesQuery,
-  useSendMessageMutation,
   useReuploadChatPdfMutation,
   useGetChatChunksQuery,
 } = api;

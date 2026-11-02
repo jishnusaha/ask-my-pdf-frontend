@@ -14,6 +14,16 @@ export interface IChatMessage {
   created_at: string;
 }
 
+// Payload of the `token` event of the message stream.
+export interface IMessageStreamToken {
+  delta: string;
+}
+
+// Payload of the `error` event of the message stream.
+export interface IMessageStreamError {
+  detail: string;
+}
+
 export interface IDocumentChunk {
   id: number;
   content: string;

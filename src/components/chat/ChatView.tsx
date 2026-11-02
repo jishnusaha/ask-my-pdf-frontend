@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { CHAT_LIST_LIMIT, MESSAGE_LIST_LIMIT } from '@/constants/chat';
 import { getErrorMessage } from '@/lib/utils';
+import { useAppDispatch } from '@/store';
 import {
+  api,
   useGetChatListQuery,
   useGetChatMessagesQuery,
-  useSendMessageMutation,
 } from '@/store/services/api';
+import { streamMessage } from '@/store/services/messageStream';
 import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageList from './MessageList';
@@ -18,11 +21,16 @@ const statusClass =
 
 export default function ChatView({ chatId }: { chatId: number }) {
   // The question being sent. It stays on screen (also after a failure) until
-  // the next send, or until the refetched history contains the saved copy.
+  // the next send, or until the history cache contains the saved copy.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  // The answer streamed so far; null until the first token arrives. Dropped on
+  // failure, because the backend saves nothing then.
+  const [streamedAnswer, setStreamedAnswer] = useState<string | null>(null);
   // Ids of the messages the backend saved for the pending question.
   const [sentMessageIds, setSentMessageIds] = useState<number[] | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const dispatch = useAppDispatch();
 
   // There is no chat-detail endpoint, so the title comes from the chat list.
   const { title } = useGetChatListQuery(
@@ -33,30 +41,63 @@ export default function ChatView({ chatId }: { chatId: number }) {
       }),
     },
   );
+  // Also the cache key that handleSend patches, so it must stay the same.
+  const messagesArgs = { chatId, limit: MESSAGE_LIST_LIMIT };
   const {
     data: messagesResponse,
     error: messagesError,
     isLoading: isMessagesLoading,
-  } = useGetChatMessagesQuery({ chatId, limit: MESSAGE_LIST_LIMIT });
-  const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
+  } = useGetChatMessagesQuery(messagesArgs);
 
   const messages = messagesResponse?.results ?? [];
-  // Sending invalidates the history, which then refetches. Keep the optimistic
-  // bubble until the refetched history has the saved messages, so it never
-  // disappears before the server copy shows up.
+  // Once the stream is done the saved messages are added to the history cache.
+  // Keep the optimistic question and the streamed answer on screen until the
+  // history contains the saved messages, so they never disappear before the
+  // server copy shows up.
   const isPendingSaved =
     sentMessageIds !== null &&
     sentMessageIds.every(id => messages.some(message => message.id === id));
 
   async function handleSend(question: string) {
     setPendingQuestion(question);
+    setStreamedAnswer(null);
     setSentMessageIds(null);
     setSendError(null);
+    setIsSending(true);
     try {
-      const sentMessages = await sendMessage({ chatId, question }).unwrap();
-      setSentMessageIds(sentMessages.map(message => message.id));
+      const saved = await streamMessage({
+        chatId,
+        question,
+        onToken: delta => setStreamedAnswer(prev => (prev ?? '') + delta),
+      });
+      // Commit the ids first, then patch the cache. RTK Query batches the
+      // patch (`queryResultPatched` is auto-batched), so it reaches React a
+      // frame later. With the ids already committed, the render that adds the
+      // saved messages is the same one that hides the streamed bubbles: no
+      // frame shows both, and none shows neither.
+      flushSync(() => setSentMessageIds(saved.map(message => message.id)));
+      const { patches } = dispatch(
+        api.util.updateQueryData('getChatMessages', messagesArgs, draft => {
+          const knownIds = new Set(draft.results.map(message => message.id));
+          const added = saved.filter(message => !knownIds.has(message.id));
+          draft.results.push(...added);
+          draft.count += added.length;
+        }),
+      );
+      // No patch means the history had no data yet (its first load is still
+      // running and may predate the save), so refetch it instead. It is also
+      // empty when the history already had the messages; a refetch is harmless.
+      if (patches.length === 0) {
+        dispatch(
+          api.util.invalidateTags([{ type: 'chat-messages', id: chatId }]),
+        );
+      }
     } catch (e) {
+      // Nothing was saved, so the partial answer must not stay as if it were.
+      setStreamedAnswer(null);
       setSendError(getErrorMessage(e));
+    } finally {
+      setIsSending(false);
     }
   }
 
@@ -78,7 +119,13 @@ export default function ChatView({ chatId }: { chatId: number }) {
           messages={messages}
           isLoading={isMessagesLoading}
           pendingQuestion={isPendingSaved ? null : pendingQuestion}
-          isThinking={isSending}
+          streamingAnswer={isPendingSaved ? null : streamedAnswer}
+          // Also while the saved messages are on their way into the history,
+          // so an answer that arrives without tokens leaves no empty frame.
+          isThinking={
+            (isSending || (sentMessageIds !== null && !isPendingSaved)) &&
+            streamedAnswer === null
+          }
           error={sendError}
         />
       )}
