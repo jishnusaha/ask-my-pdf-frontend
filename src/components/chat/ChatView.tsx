@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CHAT_LIST_LIMIT, MESSAGE_LIST_LIMIT } from '@/constants/chat';
 import { getErrorMessage } from '@/lib/utils';
@@ -31,6 +32,7 @@ export default function ChatView({ chatId }: { chatId: number }) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const dispatch = useAppDispatch();
+  const router = useRouter();
 
   // There is no chat-detail endpoint, so the title comes from the chat list.
   const { title } = useGetChatListQuery(
@@ -101,12 +103,24 @@ export default function ChatView({ chatId }: { chatId: number }) {
     }
   }
 
-  const loadError =
-    messagesError && !messagesResponse
-      ? 'status' in messagesError && messagesError.status === 404
-        ? 'Chat not found.'
-        : 'Could not load messages.'
+  const isChatMissing =
+    !!messagesError &&
+    !messagesResponse &&
+    'status' in messagesError &&
+    messagesError.status === 404;
+  const loadError = isChatMissing
+    ? 'Chat not found.'
+    : messagesError && !messagesResponse
+      ? 'Could not load messages.'
       : null;
+
+  // A chat that doesn't exist has nothing to show, so send the user to the
+  // upload page to start a new one. `replace` keeps the dead URL out of the
+  // history. Effects don't run while Activity hides this route, so this only
+  // fires while the chat page is on screen.
+  useEffect(() => {
+    if (isChatMissing) router.replace('/');
+  }, [isChatMissing, router]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
